@@ -1,6 +1,7 @@
 ﻿using casoMatriculasAPI.Data;
 using casoMatriculasAPI.DTOs;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
@@ -212,38 +213,32 @@ namespace casoMatriculasAPI.Controllers
         [HttpPut("update/{id}")]
         public async Task<ActionResult> UpdateEnrollmentStatus(int id, UpdateEnrollmentDto updateEnrollmentDto)
         {
-            // Validate the enrollment exists
-            var enrollment = await _context.Enrollments.FindAsync(id);
-            if (enrollment == null)
+            //params for stored procedure
+            var spParameters = new[]
             {
-                return NotFound("Enrollment not found"); // 404 Not Found
+                new SqlParameter("@EnrollmentId", id),
+                new SqlParameter("@UpdatedStatus", updateEnrollmentDto.Status)
+            };
+
+            try
+            {
+                //execute stored procedure to update status
+                await _context.Database.ExecuteSqlRawAsync(
+                    "EXEC sp_updateEnrollmentStatus @EnrollmentId, @UpdatedStatus",
+                    spParameters);
+
+                return Ok("Enrollment status updated successfully"); // 200 Ok
             }
 
-            // Validate status
-            var validStatuses = new[] { "Activa", "Finalizada", "Cancelada" };
-            if (string.IsNullOrEmpty(updateEnrollmentDto.Status) //validate status isnt empty
-                || !validStatuses.Contains(updateEnrollmentDto.Status, StringComparer.OrdinalIgnoreCase)) //validate status is one of the valid options
+            catch (SqlException ex)
             {
-                return BadRequest("Invalid status. Must be 'Activa', 'Finalizada', or 'Cancelada'.");
+                if (ex.Number == 50000)
+                {
+                    return BadRequest(ex.Message); // error message set in stored procedure
+                }
+                // if error is not handled:
+                return StatusCode(StatusCodes.Status500InternalServerError, "An error occurred while updating the enrollment status"); // 500 Internal Server Error
             }
-
-            // Validate that the enrollment is not in the updated status already
-            if (enrollment.Status.Equals(updateEnrollmentDto.Status, StringComparison.OrdinalIgnoreCase)) //using ordinalignorecase comparison to bypass cases
-            {
-                return BadRequest("Enrollment is already in the updated status");
-            }
-
-            // validate status is not "Finalizada" if updated status is "Cancelada"
-            if (enrollment.Status.Equals("Finalizada", StringComparison.OrdinalIgnoreCase) &&
-                updateEnrollmentDto.Status.Equals("Cancelada", StringComparison.OrdinalIgnoreCase))
-            {
-                return BadRequest("Cannot cancel an enrollment if its already finalized.");
-            }
-
-            // Update the enrollment status
-            enrollment.Status = updateEnrollmentDto.Status;
-            await _context.SaveChangesAsync();
-            return Ok("Enrollment status updated successfully"); // 200 Ok
         }
 
         // Delete enrollment
