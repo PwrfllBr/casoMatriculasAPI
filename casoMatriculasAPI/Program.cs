@@ -1,8 +1,18 @@
 using casoMatriculasAPI.Data;
 using casoMatriculasAPI.Repositories;
 using Microsoft.EntityFrameworkCore;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+//Serilog conf
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Debug()
+    .WriteTo.Console()
+    .WriteTo.File("logs/casoMatriculasAPI.txt", rollingInterval: RollingInterval.Day) // daily log file
+    .CreateLogger();
+
+builder.Host.UseSerilog();
 
 builder.Services.AddControllers();
 
