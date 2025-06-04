@@ -1,6 +1,7 @@
 ﻿using casoMatriculasAPI.Data;
 using casoMatriculasAPI.DTOs;
 using casoMatriculasAPI.Models;
+using casoMatriculasAPI.Repositories;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,9 +14,11 @@ namespace casoMatriculasAPI.Controllers
     public class CourseController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly ICourseRepository _courseRepository;
 
-        public CourseController(ApplicationDbContext context)
+        public CourseController( ICourseRepository courseRepository, ApplicationDbContext context)
         {
+            _courseRepository = courseRepository;
             _context = context;
         }
 
@@ -25,7 +28,8 @@ namespace casoMatriculasAPI.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<CourseDto>>> GetCourses()
         {
-            var coursesDto = _context.Courses.Select(c => new CourseDto
+            var courses = await _courseRepository.GetCourses();
+            var coursesDto = courses.Select(c => new CourseDto
             {
                 IdCourse = c.IdCourse,
                 Name = c.Name,
@@ -38,7 +42,7 @@ namespace casoMatriculasAPI.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<CourseDto>> GetCoursebyId(int id)
         {
-            var course = await _context.Courses.FindAsync(id);
+            var course = await _courseRepository.GetCourseById(id);
 
             if (course == null)
             {
@@ -69,7 +73,7 @@ namespace casoMatriculasAPI.Controllers
                 Name = newCourseDto.Name,
                 Description = newCourseDto.Description
             };
-            _context.Courses.Add(course);
+            _courseRepository.NewCourse(course);
             await _context.SaveChangesAsync();
             // Return the created course as a DTO
             var courseDto = new CourseDto
@@ -85,7 +89,7 @@ namespace casoMatriculasAPI.Controllers
         [HttpPut("update/{id}")]
         public async Task<ActionResult> UpdateCourse(int id, NewCourseDto updatedCourseDto)
         {
-            var updatedCourse = await _context.Courses.FindAsync(id);
+            var updatedCourse = await _courseRepository.GetCourseById(id);
             if (updatedCourse == null)
             {
                 return NotFound("Course not found"); // 404 Not Found
@@ -99,6 +103,7 @@ namespace casoMatriculasAPI.Controllers
                 updatedCourse.Name = updatedCourseDto.Name;
                 updatedCourse.Description = updatedCourseDto.Description;
 
+                _courseRepository.UpdateCourse(updatedCourse);
                 await _context.SaveChangesAsync();
                 return Ok("Course updated"); // 200 ok  
             }
@@ -108,12 +113,12 @@ namespace casoMatriculasAPI.Controllers
         [HttpDelete("delete/{id}")]
         public async Task<IActionResult> DeleteCourse(int id)
         {
-            var course = await _context.Courses.FindAsync(id);
+            var course = await _courseRepository.GetCourseById(id);
             if (course == null)
             {
                 return NotFound("Course not found"); // 404 Not Found
             }
-            _context.Courses.Remove(course);
+            _courseRepository.DeleteCourse(course);
             await _context.SaveChangesAsync();
             return Ok("Course deleted successfully"); // 200 OK
         }

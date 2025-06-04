@@ -1,5 +1,6 @@
 ﻿using casoMatriculasAPI.Data;
 using casoMatriculasAPI.DTOs;
+using casoMatriculasAPI.Repositories;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -13,9 +14,16 @@ namespace casoMatriculasAPI.Controllers
     public class EnrollmentController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IEnrollmentRepository _enrollmentRepository;
+        private readonly ICourseRepository _courseRepository;
+        private readonly IStudentRepository _studentRepository;
 
-        public EnrollmentController(ApplicationDbContext context)
+        public EnrollmentController(ICourseRepository courseRepository, IStudentRepository studentRepository,
+            IEnrollmentRepository enrollmentRepository, ApplicationDbContext context)
         {
+            _courseRepository = courseRepository;
+            _studentRepository = studentRepository;
+            _enrollmentRepository = enrollmentRepository;
             _context = context;
         }
 
@@ -23,9 +31,9 @@ namespace casoMatriculasAPI.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<EnrollmentDto>>> GetEnrollments()
         {
-            var enrollmentsDto = await _context.Enrollments
-                .Include(e => e.Student)
-                .Include(e => e.Course)
+            var enrollments = await _enrollmentRepository.GetEnrollments();
+
+            var enrollmentsDto = enrollments
                 .Select(e => new EnrollmentDto
                 {
                     IdEnrollment = e.IdEnrollment,
@@ -35,7 +43,7 @@ namespace casoMatriculasAPI.Controllers
                     CourseName = e.Course.Name,
                     Status = e.Status,
                     EnrollmentDate = e.EnrollmentDate
-                }).ToListAsync();
+                }).ToList();
             return Ok(enrollmentsDto); // 200 Ok
         }
 
@@ -43,10 +51,7 @@ namespace casoMatriculasAPI.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<EnrollmentDto>> GetEnrollmentById(int id)
         {
-            var enrollment = await _context.Enrollments
-                .Include(e => e.Student)
-                .Include(e => e.Course)
-                .FirstOrDefaultAsync(e => e.IdEnrollment == id);
+            var enrollment = await _enrollmentRepository.GetEnrollmentById(id);
             if (enrollment == null)
             {
                 return NotFound("Enrollment not found"); //404 Not Found
@@ -70,10 +75,7 @@ namespace casoMatriculasAPI.Controllers
         [HttpGet("student/{studentId}")]
         public async Task<ActionResult<IEnumerable<EnrollmentDto>>> GetEnrollmentsByStudentId(int studentId)
         {
-            var enrollments = await _context.Enrollments.Where(e => e.IdStudent == studentId)
-                .Include(e => e.Student)
-                .Include(e => e.Course)
-                .ToListAsync();
+            var enrollments = await _enrollmentRepository.GetEnrollmentsByStudentId(studentId);
             //if no enrollments found, return 404
             if (enrollments == null || !enrollments.Any())
             {
@@ -98,10 +100,7 @@ namespace casoMatriculasAPI.Controllers
         [HttpGet("course/{courseId}")]
         public async Task<ActionResult<IEnumerable<EnrollmentDto>>> GetEnrollmentsByCourseId(int courseId)
         {
-            var enrollments = await _context.Enrollments.Where(e => e.IdCourse == courseId)
-                .Include(e => e.Student)
-                .Include(e => e.Course)
-                .ToListAsync();
+            var enrollments = await _enrollmentRepository.GetEnrollmentsByCourseId(courseId);
             //if no enrollments found, return 404
             if (enrollments == null || !enrollments.Any())
             {
@@ -125,10 +124,7 @@ namespace casoMatriculasAPI.Controllers
         [HttpGet("status")]
         public async Task<ActionResult<IEnumerable<EnrollmentDto>>> GetEnrollmentsByStatus(string status)
         {
-            var enrollments = await _context.Enrollments.Where(e => e.Status.ToLower() == status.ToLower())
-                .Include(e => e.Student)
-                .Include(e => e.Course)
-                .ToListAsync();
+            var enrollments = await _enrollmentRepository.GetEnrollmentsByStatus(status);
             //if no enrollments found, return 404
             if (enrollments == null || !enrollments.Any())
             {
@@ -153,8 +149,8 @@ namespace casoMatriculasAPI.Controllers
         public async Task<ActionResult<EnrollmentDto>> NewEnrollment(NewEnrollmentDto newEnrollmentDto)
         {
             //validate the student and course enrolled exist
-            var student = await _context.Students.FindAsync(newEnrollmentDto.IdStudent);
-            var course = await _context.Courses.FindAsync(newEnrollmentDto.IdCourse);
+            var student = await _studentRepository.GetStudentById(newEnrollmentDto.IdStudent);
+            var course = await _courseRepository.GetCourseById(newEnrollmentDto.IdCourse);
 
             if (newEnrollmentDto == null)
             {
@@ -170,8 +166,7 @@ namespace casoMatriculasAPI.Controllers
             }
 
             // Validate that student is not enrolled in the course already
-            var existingEnrollment = await _context.Enrollments
-                .AnyAsync(e => e.IdStudent == newEnrollmentDto.IdStudent && e.IdCourse == newEnrollmentDto.IdCourse);
+            var existingEnrollment = await _enrollmentRepository.checkDuplicates(newEnrollmentDto.IdStudent, newEnrollmentDto.IdCourse);
             if (existingEnrollment)
             {
                 return BadRequest("This student is already enrolled in that course"); // 400 Bad Request
@@ -192,7 +187,7 @@ namespace casoMatriculasAPI.Controllers
                 Status = "Activa" // Default status for new entries
             };
 
-            _context.Enrollments.Add(enrollment);
+            _enrollmentRepository.NewEnrollment(enrollment);
             await _context.SaveChangesAsync();
             // map dto to send as response
             var enrollmentDto = new EnrollmentDto
@@ -246,7 +241,7 @@ namespace casoMatriculasAPI.Controllers
         public async Task<IActionResult> DeleteEnrollment(int id)
         {
             // Validate the enrollment exists
-            var enrollment = await _context.Enrollments.FindAsync(id);
+            var enrollment = await _enrollmentRepository.GetEnrollmentById(id);
             if (enrollment == null)
             {
                 return NotFound("Enrollment not found"); // 404 Not Found
@@ -259,7 +254,7 @@ namespace casoMatriculasAPI.Controllers
             }
 
             // Delete the enrollment
-            _context.Enrollments.Remove(enrollment);
+            _enrollmentRepository.DeleteEnrollment(enrollment);
             await _context.SaveChangesAsync();
             return Ok("Enrollment deleted successfully"); // 200 Ok
         }

@@ -3,6 +3,7 @@ using casoMatriculasAPI.Data;
 using casoMatriculasAPI.Models;
 using Microsoft.EntityFrameworkCore;
 using casoMatriculasAPI.DTOs;
+using casoMatriculasAPI.Repositories;
 
 namespace casoMatriculasAPI.Controllers
 {
@@ -10,10 +11,12 @@ namespace casoMatriculasAPI.Controllers
     [ApiController]
     public class StudentController : ControllerBase
     {
+        private readonly IStudentRepository _studentRepository;
         private readonly ApplicationDbContext _context;
 
-        public StudentController(ApplicationDbContext context)
+        public StudentController(IStudentRepository studentRepository, ApplicationDbContext context)
         {
+            _studentRepository = studentRepository;
             _context = context;
         }
 
@@ -23,7 +26,7 @@ namespace casoMatriculasAPI.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<StudentDto>>> GetStudents()
         {
-            var students = await _context.Students.ToListAsync();
+            var students = await _studentRepository.GetStudents();
             var studentsDto = students.Select(s => new StudentDto
             {
                 IdStudent = s.IdStudent,
@@ -38,7 +41,7 @@ namespace casoMatriculasAPI.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<StudentDto>> GetStudentbyId(int id)
         {
-            var student = await _context.Students.FindAsync(id);
+            var student = await _studentRepository.GetStudentById(id);
             
             if (student == null)
             {
@@ -71,7 +74,7 @@ namespace casoMatriculasAPI.Controllers
                     LastName = newStudentDto.LastName,
                     Email = newStudentDto.Email
                 };
-                _context.Students.Add(student);
+                _studentRepository.NewStudent(student);
                 await _context.SaveChangesAsync();
 
                 // Return the created student as a DTO
@@ -91,7 +94,7 @@ namespace casoMatriculasAPI.Controllers
         [HttpPut("update/{id}")]
         public async Task<ActionResult> UpdateStudent(int id, NewStudentDto updatedStudentDto)
         {
-            var updatedStudent = await _context.Students.FindAsync(id);
+            var updatedStudent = await _studentRepository.GetStudentById(id);
             if (updatedStudent == null)
             {
                 return NotFound("Student not found"); //404 Not Found
@@ -107,6 +110,7 @@ namespace casoMatriculasAPI.Controllers
                 updatedStudent.LastName = updatedStudentDto.LastName;
                 updatedStudent.Email = updatedStudentDto.Email;
 
+                _studentRepository.UpdateStudent(updatedStudent);
                 await _context.SaveChangesAsync();
                 return Ok("Student updated"); //200 Ok
             }
@@ -116,13 +120,13 @@ namespace casoMatriculasAPI.Controllers
         [HttpDelete("delete/{id}")]
         public async Task<IActionResult> DeleteStudent(int id)
         {
-            var student = await _context.Students.FindAsync(id);
+            var student = await _studentRepository.GetStudentById(id);
             if (student == null)
             {
                 return NotFound("Student not found"); //404 Not Found
             }
 
-            _context.Students.Remove(student);
+            _studentRepository.DeleteStudent(student);
             await _context.SaveChangesAsync();
 
             return Ok("Student deleted successfully");
